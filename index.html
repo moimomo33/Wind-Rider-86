@@ -484,7 +484,7 @@ const S={mode:'menu',game:'free',lv:0,wl:1,time:0,wt:0,
  force:[0,0,0],sa:0,fsgn:1,va:[0,0,0],wind:[0,0,-8],shel:1,cur:null,wv:[0,0,0,0],
  loop:{type:0,ang:0,done:0},phi0:0,jumpV0:0,trim:0,preload:0,steerUsed:0,
  cp:0,raceT:0,count:0,best:null,msg:'',msgT:0,jumpCD:0,prevRate:0,
- cam:{eye:[0,3,-8],tgt:[0,1,0],roll:0},streaks:[],spray:[],flow:[],basis:null,G:null,P:null,handPos:{},Nsm:null,camYaw:null};
+ cam:{eye:[0,3,-8],tgt:[0,1,0],roll:0},walk:0,streaks:[],spray:[],flow:[],basis:null,G:null,P:null,handPos:{},Nsm:null,camYaw:null};
 const H={L:mkHand(),R:mkHand()};
 const PT=new Map();
 const SENS={ok:false,got:false,gd:[0,9.8,0],gl:[0,9.8,0],rollDev:0,roll:0,a0:0,half:0,rel:0,armed:true,steer:0,pt:.6,p0:.6,pitch:0,viewFlip:false,flipCD:0};
@@ -563,9 +563,11 @@ function rigBoom(G,B){const pt=(u,v,d)=>V.add(V.add(V.add(G.foot,V.mul(G.m,u)),V
  G.arm=(s,t)=>V.madd(V.lerp(G.B0,G.CL,t),G.n,s*.2*Math.sin(Math.PI*t));G.grip=[G.arm(ws,.17),G.arm(ws,.56)];}
 function luffTheta(){const R0=[-Math.cos(S.yaw),0,Math.sin(S.yaw)],F0=[Math.sin(S.yaw),0,Math.cos(S.yaw)];
  return clamp(Math.atan2(-S.side*V.dot(S.va,R0),-V.dot(S.va,F0)),-2.9,2.9);}
+function transTarget(){const l=luffTheta();return S.side!==S.wsRaw?clamp(Math.PI-Math.abs(l),1.9,2.85):l;}
 function flipSail(){const r=S.rig;if(r.st!=='up')return false;
  const up=Math.sin(S.yaw)*S.wind[0]+Math.cos(S.yaw)*S.wind[2]<0;
  r.th=-r.th;r.psi=-r.psi;S.side=-S.side;r.st='trans';r.t=0;const bw=S.side!==S.wsRaw;
+ r.th=wrapA(r.th);r.walk=Math.abs(transTarget())<1.57?1:0;r.from=-S.side;
  msg(bw?'VOILE À CONTRE':(up?'VIREMENT !':'EMPANNAGE !'),1.1);onSailFlip(bw,up);return true;}
 
 function updateRig(dt){const r=S.rig;
@@ -580,8 +582,8 @@ function updateRig(dt){const r=S.rig;
   if(r.t>=1.5){r.st='up';r.grace=.6;r.lone=0;S.crouch=0;}break;}
  case'falling':H.L.held=H.R.held=false;r.psiV-=4.5*dt;r.psi+=r.psiV*dt;
   if(r.psi<=-1.52){r.psi=-1.52;r.st='down';msg('VOILE À L\'EAU',1.2);sfxSplash(.5);}break;
- case'trans':H.L.held=H.R.held=false;r.t+=dt;r.th=damp(r.th,luffTheta(),4,dt);r.psi=damp(r.psi,.12,3,dt);r.phi=damp(r.phi,0,3,dt);
-  if(r.t>.7){r.st='up';r.grace=.8;r.lone=0;}break;
+ case'trans':H.L.held=H.R.held=false;r.t+=dt;{const a=Math.abs(transTarget());const tg=r.walk?clamp(a,.42,1.5):Math.max(a,1.6)-6.2832;r.th=damp(r.th,tg,r.walk?4:3.6,dt);}S.walk=r.walk?Math.sin(Math.PI*clamp(r.t/.7,0,1)):0;S.walkA=Math.PI*ease(r.t/.7);r.psi=damp(r.psi,.12,3,dt);r.phi=damp(r.phi,0,3,dt);
+  if(r.t>.7){r.st='up';r.grace=.8;r.lone=0;r.th=wrapA(r.th);S.walk=0;}break;
  case'up':{
   if(r.grace>0&&S.count<=0)r.grace-=dt;
   if(S.count<=0){H.L.held=H.L.touch;H.R.held=H.R.touch;}
@@ -591,10 +593,10 @@ function updateRig(dt){const r=S.rig;
   let tTh,tPsi,tPhi,rateTh=5;
   if(front.held&&back.held){r.lone=0;
    tPhi=.42*(.6*front.l+.4*back.l)*ws;
-   tTh=S.bw?-clamp(1.5-1.25*back.r+.4*(front.r-.5),.1,1.7):clamp(.5+1.0*(back.r-front.r)+.25*(front.r+back.r-1),-.15,1.6);
-   tPsi=.32*(1-(front.r+back.r))*(S.bw?-.6:1);
+   tTh=S.bw?clamp(2.15+.9*(back.r-front.r)+.2*(front.r+back.r-1),1.7,2.85):clamp(.5+1.0*(back.r-front.r)+.25*(front.r+back.r-1),.12,1.6);
+   tPsi=.32*(1-(front.r+back.r));
   }else if(front.held||(r.grace>0&&!back.held)){r.lone=0;const f=front.held?front:{r:.5,l:0};
-   tPhi=.42*f.l*ws;tPsi=.32*(1-2*f.r);tTh=luffTheta();rateTh=2.5;
+   tPhi=.42*f.l*ws;tPsi=.32*(1-2*f.r);tTh=S.bw?luffTheta():clamp(luffTheta(),.4,2.9);rateTh=2.5;
   }else if(back.held){r.lone+=dt;tPhi=.3*back.l*ws;tTh=luffTheta();rateTh=2;tPsi=-.15-.3*r.lone;
    if(r.lone>2.6){r.st='falling';r.psiV=-.4;break;}
   }else{r.st='falling';r.psiV=0;break;}
@@ -681,13 +683,16 @@ function physStep(dt){
 function kinematics(){S.wv=waveAt(S.pos[0],S.pos[2],S.time);if(!S.air&&S.mode!=='play')S.pos[1]=S.wv[0];
  const B=S.basis=boardBasis(),G=S.G=rigGeom(B);rigBoom(G,B);S.P=pose(B,G);}
 function pose(B,G){const sS=S.sS,p=S.p,cr=S.crouch,toW=G.toW,hk=S.hike;
- const facing=V.norm(V.add(V.mul(B.Rb,-sS),V.mul(B.Fb,.3))),sR=V.norm(V.cross(facing,B.Ub));
- const zc=lerp(-.12,-.58,p);
- const hip=V.add(S.pos,toW([sS*(.12+.3*hk),.98-.2*Math.abs(hk)-.42*cr,zc]));
+ let facing=V.norm(V.add(V.mul(B.Rb,-sS),V.mul(B.Fb,.3)));
+ const wk=S.walk||0,zc=lerp(-.12,-.58,p);const arc=S.rig.st==='trans'&&S.rig.walk;const aa=S.walkA||0,fr=S.rig.from||1;
+ const rb=.3+.25*Math.max(0,hk);let hx=sS*rb,hz=zc;
+ if(arc){const k=Math.sin(aa);hx=fr*(rb+(.6-rb)*Math.sqrt(k))*Math.cos(aa);hz=lerp(lerp(zc,.35,Math.min(1,aa/1.2)),.35+.62,k);const mf=toW([0,0,.35]),hp=toW([hx,0,hz]);facing=V.norm(V.lerp(facing,V.sub(mf,hp),.85*Math.min(1,k*1.6)));}
+ const sR=V.norm(V.cross(facing,B.Ub));
+ const hip=V.add(S.pos,toW([hx,.98-.2*Math.abs(hk)-.42*cr-.2*wk,hz]));
  const lean=.12+.55*hk-.5*cr,tdir=V.norm(V.add(V.mul(B.Ub,Math.cos(lean)),V.mul(facing,-Math.sin(lean))));
  const neck=V.madd(hip,tdir,.62),fx=sS*lerp(.06,.11,p);
  return{facing,sR,hip,tdir,neck,head:V.madd(neck,tdir,.2),frontH:V.dot(sR,B.Fb)>0?'R':'L',
-  footF:V.add(S.pos,toW([fx,.13,lerp(.05,-.3,p)])),footB:V.add(S.pos,toW([lerp(fx,0,p),.13,lerp(-.42,-.86,p)]))};}
+  footF:arc?V.add(S.pos,toW([hx+.14*Math.sin(aa),.13,hz+.12])):V.add(S.pos,toW([fx,.13,lerp(.05,-.3,p)])),footB:arc?V.add(S.pos,toW([hx-.14*Math.sin(aa),.13,hz-.12])):V.add(S.pos,toW([lerp(fx,0,p),.13,lerp(-.42,-.86,p)]))};}
 
 /* ---------- particules ---------- */
 let QP=1;
@@ -1023,7 +1028,7 @@ const MODES=[['tuto','TUTORIEL','Apprends les commandes pas à pas (spot : Miami
 function resetRun(){
  loadLevel(S.lv);const st=LVL.start,racing=S.game==='chrono'||S.game==='race';
  S.pos=st.pos.slice();S.vel=[0,0,0];S.omega=0;S.air=false;S.airT=0;S.p=0;S.u=0;S.yaw=st.yaw;S.wt=0;S.trim=0;S.steerUsed=0;S.preload=0;S.prevRate=0;S.jumpCD=0;
- S.loop={type:0,ang:0,done:0};S.hike=0;S.crouch=0;S.bwHold=false;S.Nsm=null;S.camYaw=null;S.handPos={};S.cur=null;S.shel=1;
+ S.loop={type:0,ang:0,done:0};S.walk=0;S.hike=0;S.crouch=0;S.bwHold=false;S.Nsm=null;S.camYaw=null;S.handPos={};S.cur=null;S.shel=1;
  worldTick(0);S.wind=WB.slice();S.va=WB.slice();
  const sd=LVL.wf[0]*-Math.cos(S.yaw)+LVL.wf[1]*Math.sin(S.yaw);S.side=S.wsRaw=sd>=0?1:-1;S.sS=S.side;
  Object.assign(S.rig,{st:racing?'up':'down',t:0,th:.6,phi:0,psi:racing?.05:-1.52,psiV:0,grace:racing?999:0,lone:0});
